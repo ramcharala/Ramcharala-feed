@@ -1,39 +1,27 @@
-// pages/api/instagram.js
+// pages/api/proxyImage.js
 export default async function handler(req, res) {
-  const { user } = req.query;
-  if (!user) return res.status(400).json({ error: 'user is required' });
-
-  const APIFY_TOKEN = process.env.APIFY_TOKEN;
-  if (!APIFY_TOKEN) return res.status(500).json({ error: 'Missing APIFY_TOKEN' });
-
-  const apiUrl = `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
-  const input = {
-    usernames: [user],
-    resultsLimit: 20,
-    scrapePosts: true,
-    proxyConfig: { useApifyProxy: true }
-  };
+  const { url } = req.query;
+  if (!url) {
+    res.status(400).send('Missing url');
+    return;
+  }
 
   try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) throw new Error(`Apify API error: ${response.status}`);
-
-    const data = await response.json();
-    const posts = (data[0]?.latestPosts || []).map(post => ({
-      id: post.id,
-      imageUrl: post.imageUrl,
-      likes: post.likesCount ?? 0,
-      link: post.url,
-      caption: post.caption || '',
-    })).sort((a, b) => b.likes - a.likes);
-
-    res.status(200).json({ username: user, posts });
+    const response = await fetch(url);
+    if (!response.ok) {
+      res.status(502).send('Error fetching image');
+      return;
+    }
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'image/jpeg');
+    // If you use Node.js 18+, response.body is a ReadableStream: use pipeTo
+    if (response.body.pipe) {
+      response.body.pipe(res);
+    } else {
+      // For Edge runtimes or if response.body does not support pipe
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    }
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).send('Proxy error');
   }
 }
