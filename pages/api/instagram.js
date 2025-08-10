@@ -1,47 +1,41 @@
-import axios from 'axios';
-import cheerio from 'cheerio';
-
-function extractJSONFromHTML(html) {
-  const match = html.match(/window\._sharedData\s*=\s*(\{.+?\});\s*<\//s);
-  if (match && match[1]) {
-    try { return JSON.parse(match[1]); } catch(e) { return null; }
-  }
-  return null;
-}
+// Next.js API route
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   const { user } = req.query;
-  if (!user) return res.status(400).json({ error: 'user required' });
+  if (!user) return res.status(400).json({ error: 'user is required' });
+
+  const APIFY_TOKEN = process.env.APIFY_TOKEN;
+  if (!APIFY_TOKEN) return res.status(500).json({ error: 'Missing APIFY_TOKEN' });
+
+  const apiUrl = `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
+  const input = {
+    usernames: [user],
+    resultsLimit: 20,
+    scrapePosts: true,
+    proxyConfig: { useApifyProxy: true }
+  };
 
   try {
-    const url = `https://www.instagram.com/${encodeURIComponent(user)}/`;
-    const r = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
     });
-    const html = r.data;
-    const shared = extractJSONFromHTML(html);
-    let edges = [];
+    if (!response.ok) throw new Error(`Apify API error: ${response.status}`);
 
-    try {
-      const userData = shared?.entry_data?.ProfilePage?.[0]?.graphql?.user;
-      const timeline = userData?.edge_owner_to_timeline_media?.edges || [];
-      edges = timeline.map(edge => {
-        const node = edge.node;
-        return {
-          id: node.id,
-          imageUrl: node.display_url,
-          likes: node.edge_liked_by?.count || 0,
-          link: `https://www.instagram.com/p/${node.shortcode}/`,
-          caption: node.edge_media_to_caption?.edges?.[0]?.node?.text || ''
-        }
-      });
-    } catch (e) {
-      edges = [];
-    }
+    const data = await response.json();
+    const posts = (data[0]?.latestPosts || []).map(post => ({
+      id: post.id,
+      imageUrl: post.imageUrl,
+      likes: post.likesCount ?? 0,
+      link: post.url,
+      caption: post.caption || '',
+    })).sort((a, b) => b.likes - a.likes);
 
-    return res.status(200).json({ username: user, posts: edges });
+    res.status(200).json({ username: user, posts });
   } catch (err) {
-    console.error(err.message);
-    return res.status(500).json({ error: 'failed to fetch instagram' });
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 }
