@@ -1,6 +1,4 @@
-// Next.js API route
-import fetch from 'node-fetch';
-
+// pages/api/instagram.js
 export default async function handler(req, res) {
   const { user } = req.query;
   if (!user) return res.status(400).json({ error: 'user is required' });
