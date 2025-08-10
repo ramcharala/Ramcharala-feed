@@ -48,7 +48,7 @@ export default function Home() {
               willChange: 'transform'
             }} className="hover-zoom">
               <Image
-                src={`/api/proxyImage?url=${encodeURIComponent(instagramImageUrl)}`}
+                src={post.imageUrl}
                 alt={post.caption || ''}
                 width={400}
                 height={400}
